@@ -26,7 +26,7 @@ app.get('/', (req, res) => {
   res.json({ message: 'API is running smoothly 🚀' });
 });
 
-// 404 + Error handler
+// Error Handling Middlewares
 app.use(errorMiddlewares.notFound);
 app.use(errorMiddlewares.errorHandler);
 
