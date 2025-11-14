@@ -8,7 +8,7 @@ exports.registerUser = asyncHandler(async (req, res) => {
   // Extract data from request body
   const { name, email, password } = req.body;
 
-  if (!name || !email || !paassword) {
+  if (!name || !email || !password) {
     res.status(400);
     throw new Error('Name, email, and password are required');
   }
