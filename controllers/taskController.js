@@ -26,17 +26,18 @@ exports.getTask = asyncHandler(async (req, res) => {
   }
 
   // allow owner or admin
-  if (task.owner._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+  const ownerIdStr = (task.owner._id || task.owner).toString();
+  if (ownerIdStr !== req.user._id.toString() && req.user.role !== 'admin') {
     res.status(403);
     throw new Error('Forbidden: You do not have access to this task');
   }
 
-  res.json(task);
+  res.json({ success: true, data: task });
 });
 
 // List tasks with pagination, filter, sort, text search
 exports.listTasks = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, status, priority, q, sort = '-createdAt' } = req.body;
+  const { page = 1, limit = 10, status, priority, q, sort = '-createdAt' } = req.query || {};
   const skip = (Number(page) - 1) * Number(limit);
 
   // by default user sees own tasks
@@ -49,14 +50,22 @@ exports.listTasks = asyncHandler(async (req, res) => {
     filter.$text = { $search: q };
   }
 
-  const taskPromise = Task.find(filter).sort(sort).skip(skip).limit(Number(limit)).select('__v');
+  const ALLOWED_SORT = ['-creadtedAt', 'createdAt', '-dueDate', 'dueDate'];
+  const sortVal = ALLOWED_SORT.includes(sort) ? sort : 'createdAt';
+
+  const taskPromise = Task.find(filter)
+    .sort(sortVal)
+    .skip(skip)
+    .limit(Number(limit))
+    .select('-__v');
   const countPromise = Task.countDocuments(filter);
 
-  const [task, total] = await Promise.All([taskPromise, countPromise]);
+  const [tasks, total] = await Promise.all([taskPromise, countPromise]);
 
   res.json({
+    success: true,
     meta: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) },
-    data: task,
+    data: tasks,
   });
 });
 
@@ -82,9 +91,10 @@ exports.updateTask = asyncHandler(async (req, res) => {
     throw new Error('Forbidden: You do not have permission to update this task');
   }
 
+  // update fields
   Object.assign(task, req.body);
   const updated = await task.save();
-  res.json(updated);
+  res.json({ success: true, data: updated });
 });
 
 // Delete task (ensure ownership OR admin)
@@ -109,8 +119,10 @@ exports.deleteTask = asyncHandler(async (req, res) => {
     throw new Error('Forbidden: You do not have permission to delete this task');
   }
 
-  await task.remove();
+  await Task.findByIdAndDelete(id);
+
   res.json({
+    success: true,
     message: 'Task deleted successfully',
   });
 });
@@ -118,10 +130,15 @@ exports.deleteTask = asyncHandler(async (req, res) => {
 // Aggregation example: stats for logged-in user (count per status)
 exports.taskStats = asyncHandler(async (req, res) => {
   const ownerId = req.user._id;
+
+  // Safe owner ObjectId: use existing ObjectId if present, otherwise create one
+  const ownerOid = typeof ownerId === 'string' ? new mongoose.Types.ObjectId(ownerId) : ownerId;
+
   const stats = await Task.aggregate([
-    { $match: { owner: mongoose.Types.ObjectId(ownerId) } },
-    { $group: { _id: `$status`, count: { $sum: 1 } } },
-    { $project: { status: `$_id`, count: 1, _id: 0 } },
+    { $match: { owner: ownerOid } },
+    { $group: { _id: '$status', count: { $sum: 1 } } },
+    { $project: { status: '$_id', count: 1, _id: 0 } },
   ]);
-  res.json({ stats });
+
+  return res.json({ success: true, stats });
 });

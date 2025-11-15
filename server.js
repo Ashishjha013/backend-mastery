@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const cors = require('cors');
 const errorMiddlewares = require('./middlewares/errorMiddleware');
 const connectDB = require('./config/db');
+const taskRoutes = require('./routes/taskRoutes');
 
 dotenv.config();
 connectDB();
@@ -21,7 +22,11 @@ if (process.env.NODE_ENV === 'development') {
 
 // Routes
 const userRoutes = require('./routes/userRoutes');
-app.use("/api/users", userRoutes)
+app.use('/api/users', userRoutes);
+// Task Routes
+app.use('/api/tasks', taskRoutes);
+
+// Health Check Route
 app.get('/', (req, res) => {
   res.json({ message: 'API is running smoothly 🚀' });
 });
@@ -33,4 +38,3 @@ app.use(errorMiddlewares.errorHandler);
 app.listen(process.env.PORT, () => {
   console.log(`Server running on http://localhost:${process.env.PORT}`);
 });
-
