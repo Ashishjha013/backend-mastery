@@ -1,20 +1,23 @@
 const express = require('express');
 const router = express.Router();
 
-const { registerSchema, loginSchema } = require('../validation/userValidation');
-const validate = require('../middlewares/validate');
+const userController = require('../controllers/userControllers');
 const { registerUser, loginUser } = require('../controllers/userControllers');
+const validate = require('../middlewares/validate');
+const { registerSchema, loginSchema } = require('../validation/userValidation');
 const { protect, adminOnly } = require('../middlewares/authMiddleware');
 
 // Routes
-router.post('/register', validate(registerSchema), registerUser);
-router.post('/login', validate(loginSchema), loginUser);
+router.post('/register', validate(registerSchema), userController.registerUser);
+router.post('/login', validate(loginSchema), userController.loginUser);
+router.post('/refresh', userController.refreshAccessToken);
+router.post('/logout', userController.logoutUser);
 
 // Protected profile route
 router.get('/profile', protect, (req, res) => {
   // Assuming req.user is set by the protect middleware
   res.json({
-    id: req.query._id,
+    id: req.user._id,
     name: req.user.name,
     email: req.user.email,
     role: req.user.role,

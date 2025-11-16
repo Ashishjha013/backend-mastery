@@ -6,11 +6,13 @@ const cors = require('cors');
 const errorMiddlewares = require('./middlewares/errorMiddleware');
 const connectDB = require('./config/db');
 const taskRoutes = require('./routes/taskRoutes');
+const cookieParser = require('cookie-parser');
 
 dotenv.config();
 connectDB();
 
 const app = express();
+app.use(cookieParser());
 
 // Middleware
 app.use(cors());
