@@ -160,4 +160,3 @@ exports.logoutUser = asyncHandler(async (req, res) => {
     });
   }
 });
-npm install morgan winston
