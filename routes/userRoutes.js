@@ -2,12 +2,15 @@ const express = require('express');
 const router = express.Router();
 
 const userController = require('../controllers/userControllers');
-const { registerUser, loginUser } = require('../controllers/userControllers');
 const validate = require('../middlewares/validate');
 const { registerSchema, loginSchema } = require('../validation/userValidation');
 const { protect, adminOnly } = require('../middlewares/authMiddleware');
+const upload = require('../middlewares/uploadMiddleware');
+const { uploadAvatar } = require('../controllers/userControllers');
 
 // Routes
+router.post('/avatar', protect, upload.single('avatar'), uploadAvatar);
+router.delete('/avatar', protect, userController.deleteAvatar);
 router.post('/register', validate(registerSchema), userController.registerUser);
 router.post('/login', validate(loginSchema), userController.loginUser);
 router.post('/refresh', userController.refreshAccessToken);
@@ -21,6 +24,7 @@ router.get('/profile', protect, (req, res) => {
     name: req.user.name,
     email: req.user.email,
     role: req.user.role,
+    avatar: req.user.avatar || null,
   });
 });
 

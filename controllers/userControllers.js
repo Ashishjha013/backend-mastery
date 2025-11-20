@@ -3,6 +3,69 @@ const User = require('../models/userModel');
 const { hashPassword, comparePassword } = require('../utils/hash');
 const { generateAccessToken, generateRefreshToken } = require('../utils/token');
 const jwt = require('jsonwebtoken');
+const cloudinary = require('../config/cloudinary');
+
+// Upload avatar for logged-in user
+exports.uploadAvatar = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    res.status(400);
+    throw new Error('No file uploaded');
+  }
+
+  // If user already has an avatar, delete it from Cloudinary
+  if (req.user.avatar && req.user.avatar.publicId) {
+    try {
+      await cloudinary.uploader.destroy(req.user.avatar.publicId);
+    } catch (err) {
+      // log but don't block
+      console.error('Failed to delete old avatar: ', err.message);
+    }
+  }
+
+  // Upload new file (buffer) to Cloudinary
+  const result = await cloudinary.uploader.upload_stream(
+    {
+      folder: 'avatars',
+      resource_type: 'image',
+    },
+    async (error, uploaded) => {
+      if (error) {
+        throw new Error('Cloudinary upload failed');
+      }
+
+      req.user.avatar = {
+        url: uploaded.secure_url,
+        publicId: uploaded.public_id,
+      };
+
+      await req.user.save();
+
+      res.json({
+        message: 'Avatar uploaded successfully',
+        avatar: req.user.avatar,
+      });
+    }
+  );
+  // Pipe buffer to Cloudinary stream
+  result.end(req.file.buffer);
+});
+
+// Delete avatar for logged-in user
+exports.deleteAvatar = asyncHandler(async (req, res) => {
+  if (!req.user.avatar || !req.user.avatar.publicId) {
+    res.status(400);
+    throw new Error('No avatar to delete');
+  }
+
+  await cloudinary.uploader.destroy(req.user.avatar.publicId);
+
+  req.user.avatar = undefined;
+  await req.user.save();
+
+  res.json({
+    message: 'Avatar deleted successfully',
+  });
+});
 
 // Refresh Access Token
 exports.refreshAccessToken = asyncHandler(async (req, res) => {

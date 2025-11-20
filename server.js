@@ -13,9 +13,11 @@ const cookieParser = require('cookie-parser');
 const errorMiddlewares = require('./middlewares/errorMiddleware');
 const connectDB = require('./config/db');
 const logger = require('./utils/logger');
+const { connectRedis } = require('./config/redis');
 
 dotenv.config();
 connectDB();
+connectRedis().catch(console.error);
 
 const app = express();
 

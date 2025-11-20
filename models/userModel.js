@@ -24,6 +24,12 @@ const userSchema = new mongoose.Schema(
 
     // Refresh Tokens for maintaining sessions
     refreshTokens: [{ type: String }],
+
+    // avatar URL from Cloudinary
+    avatar: {
+      url: { type: String },
+      publicId: { type: String },
+    },
   },
   { timestamps: true }
 );
