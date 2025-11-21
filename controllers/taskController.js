@@ -1,7 +1,8 @@
 const asyncHandler = require('../middlewares/asyncHandler');
 const Task = require('../models/taskModel');
-const User = require('../models/userModel');
 const mongoose = require('mongoose');
+const { setCache, getCache, delCache } = require('../utils/cache');
+const { x } = require('joi');
 
 // Create task (owner = req.user._id)
 exports.createTask = asyncHandler(async (req, res) => {
@@ -9,6 +10,9 @@ exports.createTask = asyncHandler(async (req, res) => {
   const owner = req.user._id;
 
   const task = await Task.create({ title, description, status, priority, dueDate, owner });
+
+  // invalidate stats cache for this user
+  await delCache(`tasks:stats:${owner}`);
   res.status(201).json({ success: true, data: task });
 });
 
@@ -44,28 +48,58 @@ exports.listTasks = asyncHandler(async (req, res) => {
   const filter = { owner: req.user._id };
   if (status) filter.status = status;
   if (priority) filter.priority = priority;
-
   // text search
   if (q) {
     filter.$text = { $search: q };
   }
 
-  const ALLOWED_SORT = ['-creadtedAt', 'createdAt', '-dueDate', 'dueDate'];
-  const sortVal = ALLOWED_SORT.includes(sort) ? sort : 'createdAt';
+  // allow only known sort values
+  const ALLOWED_SORT = ['-createdAt', 'createdAt', '-dueDate', 'dueDate'];
+  const sortVal = ALLOWED_SORT.includes(sort) ? sort : '-createdAt';
 
+  // build a unique cache key per user + filters
+  const cacheKey = `tasks:${req.user._id}:p=${page}:l=${limit}:s=${status || ''}:pr=${
+    priority || ''
+  }:q=${encodeURIComponent(q || '')}:sort=${sortVal}`;
+
+  // 1) Try cache first
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return res.json({
+      success: true,
+      meta: cached.meta,
+      data: cached.data,
+      cached: true,
+    });
+  }
+
+  // 2) If no cache → hit DB
   const taskPromise = Task.find(filter)
     .sort(sortVal)
     .skip(skip)
     .limit(Number(limit))
     .select('-__v');
+
   const countPromise = Task.countDocuments(filter);
 
   const [tasks, total] = await Promise.all([taskPromise, countPromise]);
 
+  const responseData = {
+    meta: {
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      pages: Math.ceil(total / limit),
+    },
+    data: tasks,
+  };
+
+  // 3) Save in cache
+  await setCache(cacheKey, responseData);
+
   res.json({
     success: true,
-    meta: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) },
-    data: tasks,
+    ...responseData,
   });
 });
 
@@ -94,6 +128,10 @@ exports.updateTask = asyncHandler(async (req, res) => {
   // update fields
   Object.assign(task, req.body);
   const updated = await task.save();
+
+  // invalidate stats cache for this user
+  await delCache(`tasks:stats:${task.owner}`);
+
   res.json({ success: true, data: updated });
 });
 
@@ -119,7 +157,11 @@ exports.deleteTask = asyncHandler(async (req, res) => {
     throw new Error('Forbidden: You do not have permission to delete this task');
   }
 
+  const ownerId = task.owner;
   await Task.findByIdAndDelete(id);
+
+  // invalidate stats cache for this user
+  await delCache(`tasks:stats:${ownerId}`);
 
   res.json({
     success: true,
@@ -130,15 +172,26 @@ exports.deleteTask = asyncHandler(async (req, res) => {
 // Aggregation example: stats for logged-in user (count per status)
 exports.taskStats = asyncHandler(async (req, res) => {
   const ownerId = req.user._id;
+  const cacheKey = `tasks:stats:${ownerId}`;
 
-  // Safe owner ObjectId: use existing ObjectId if present, otherwise create one
-  const ownerOid = typeof ownerId === 'string' ? new mongoose.Types.ObjectId(ownerId) : ownerId;
+  // 1) Try cache
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return res.json({
+      stats: cached,
+      cached: true,
+    });
+  }
 
+  // 2) Compute from DB
   const stats = await Task.aggregate([
-    { $match: { owner: ownerOid } },
+    { $match: { owner: new mongoose.Types.ObjectId(ownerId) } },
     { $group: { _id: '$status', count: { $sum: 1 } } },
     { $project: { status: '$_id', count: 1, _id: 0 } },
   ]);
+
+  // 3) Store in cache
+  await setCache(cacheKey, stats);
 
   return res.json({ success: true, stats });
 });
